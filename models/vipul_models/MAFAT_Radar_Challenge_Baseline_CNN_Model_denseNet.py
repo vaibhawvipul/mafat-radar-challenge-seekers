@@ -25,6 +25,8 @@ from tensorflow.keras.metrics import AUC
 from sklearn.metrics import roc_auc_score, roc_curve, auc
 from matplotlib.colors import LinearSegmentedColormap
 from termcolor import colored
+from imblearn.over_sampling import SMOTE
+from sklearn.model_selection import train_test_split
 
 # Set seed for reproducibility of results
 seed_value = 0
@@ -429,12 +431,26 @@ train_df = append_dict(training_df, train_aux)
 
 # Preprocessing and split the data to training and validation
 train_df = data_preprocess(train_df.copy())
-train_x, train_y, val_x, val_y = split_train_val(train_df)
-val_y =  val_y.astype(int)
-train_y =train_y.astype(int)
-train_x = train_x.reshape(list(train_x.shape)+[1])
-val_x = val_x.reshape(list(val_x.shape)+[1])
 
+x = train_df["iq_sweep_burst"]
+y = train_df["target_type"].astype(int)
+
+orig_shape = (-1,x.shape[1],x.shape[2])
+
+x = x.reshape(x.shape[0],x.shape[1]*x.shape[2])
+
+smote = SMOTE(random_state=0)
+X_resampled, y_resampled = smote.fit_sample(x, y)
+
+train_x, _, train_y, _ = train_test_split(X_resampled, y_resampled, test_size=0.2, random_state=1)
+train_y = train_y.astype(int)
+
+train_x = train_x.reshape(orig_shape)
+train_x = train_x.reshape(list(train_x.shape)+[1])
+
+_, _, val_x, val_y = split_train_val(train_df)
+val_y =  val_y.astype(int)
+val_x = val_x.reshape(list(val_x.shape)+[1])
 
 # Public test set - loading and preprocessing
 test_path = '/home/vaibhawvipul/Documents/vaibhawvipul/datasets/mafat/MAFAT RADAR Challenge - Public Test Set V1'
@@ -445,7 +461,7 @@ test_x = test_x.reshape(list(test_x.shape)+[1])
 
 
 # Model configuration:
-batch_size = 16
+batch_size = 64
 img_width, img_height = 126, 32
 loss_function = BinaryCrossentropy()
 no_epochs = 20
