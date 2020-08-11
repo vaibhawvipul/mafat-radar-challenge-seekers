@@ -3,7 +3,7 @@
 
 # #**MAFAT Radar Challenge - Baseline Model**
 
-# AUC - 0.8078
+# AUC - 0.8238
 
 import os
 import random
