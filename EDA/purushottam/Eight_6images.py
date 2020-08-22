@@ -22,7 +22,7 @@ from tensorflow.keras import Input as inp
 from tensorflow.keras.applications.vgg16 import VGG16
 
 from tensorflow.keras.losses import BinaryCrossentropy
-from tensorflow.keras.optimizers import Adam, Nadam
+from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.metrics import AUC
 from sklearn.metrics import roc_auc_score, roc_curve, auc
 from matplotlib.colors import LinearSegmentedColormap
@@ -219,6 +219,7 @@ def data_preprocess(data):
 		iq = fft(data['iq_sweep_burst'][i])
 		iq = max_value_on_doppler(iq,data['doppler_burst'][i])
 		iq = normalize(iq)
+		# iq = np.concatenate((iq[:][10:40],iq[:][80:116]))
 		X.append(iq)
 
 	data['iq_sweep_burst'] = np.array(X)
@@ -329,13 +330,6 @@ def create_model(input_shape, init):
 	x5 = BatchNormalization()(x5)
 	x6 = Concatenate()([x3,x5])
 
-	l3 = Reshape((-1,126))(x6)
-	l4 = LSTM(256, return_sequences=True, kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(l3)
-	#l1 = Dropout(0.5)(l1)
-	l5 = LSTM(191, return_sequences=False, go_backwards=True,
-				kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(l4)
-	l5 = Dropout(0.5)(l5)
-
 	x7 = Conv2D(96, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x6)
 	x7 = BatchNormalization()(x7)
 	x8 = Conv2D(96, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x7)
@@ -351,9 +345,9 @@ def create_model(input_shape, init):
 
 	x13 = GlobalAveragePooling2D()(x12)
 
-	x14 = Concatenate()([x13, l2, l5])
+	x14 = Concatenate()([x13, l2])
 
-	x14 = Reshape((-1,37))(x14)
+	x14 = Reshape((-1,128))(x14)
 	x15 = LSTM(1024, return_sequences=True,
 				kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(x14)
 	#x15 = Dropout(0.5)(x15)
@@ -448,7 +442,8 @@ def stats(pred, actual):
 experiment_auxiliary = '/home/Data/MAFAT RADAR Challenge - Auxiliary Experiment Set V2'
 experiment_auxiliary_df = load_data(experiment_auxiliary)
 
-
+# experiment_auxiliary = '/media/antpc/main_drive/purushottam/mafat/Data/MAFAT RADAR Challenge - Auxiliary Synthetic Set V2'
+# experiment_auxiliary_df = load_data(experiment_auxiliary)
 
 # Taking sample from the Auxiliary Experiment set
 train_aux = aux_split(experiment_auxiliary_df)
@@ -469,6 +464,13 @@ training_df = load_data(train_path)
 
 # Adding segments from the experiment auxiliary set to the training set
 train_df = append_dict(training_df, train_aux)
+
+synth_path = '/home/Data/MAFAT RADAR Challenge - Auxiliary Synthetic Set V2'
+synthetic_data = load_data(synth_path)
+
+synthetic_aux = aux_split(synthetic_data)
+
+train_df = append_dict(train_df, synthetic_aux)
 
 # Preprocessing and split the data to training and validation
 train_df = data_preprocess(train_df.copy())
@@ -615,11 +617,11 @@ submission['prediction'] = submission['prediction'].astype('float')
 '''
 
 # Model configuration:
-batch_size = 2
+batch_size = 64
 img_width, img_height = 126, 32
 loss_function = binary_focal_loss() #BinaryCrossentropy()
 no_epochs = 50
-optimizer = Nadam(learning_rate = 0.0001)
+optimizer = Adam(learning_rate = 0.0001)
 input_shape = (img_width, img_height, 1)
 
 init = tf.keras.initializers.glorot_normal(seed = 0)
@@ -659,6 +661,6 @@ submission['prediction'] = model.predict(test_x)
 submission['prediction'] = submission['prediction'].astype('float')
 
 # Save submission
-submission.to_csv('submission.csv', index=False)
+submission.to_csv('submission_with_synthetic_sample.csv', index=False)
 
 print("Training Done!")

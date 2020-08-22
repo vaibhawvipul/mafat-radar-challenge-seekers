@@ -3,7 +3,7 @@
 
 # #**MAFAT Radar Challenge - Baseline Model**
 
-# AUC - 0.8238
+# AUC - 0.8078
 
 import os
 import random
@@ -17,7 +17,7 @@ from tensorflow.keras import backend as K
 from tensorflow.keras.models import Sequential, load_model, Model
 from tensorflow.keras.layers import Dense, Flatten, Conv2D, MaxPooling2D, AveragePooling2D, Dropout, \
     GlobalAveragePooling2D, Concatenate, BatchNormalization
-from tensorflow.keras.layers import LSTM, Reshape, TimeDistributed
+from tensorflow.keras.layers import LSTM, Reshape, TimeDistributed, Bidirectional
 from tensorflow.keras import initializers
 from tensorflow.keras import Input as inp
 from tensorflow.keras.applications.vgg16 import VGG16
@@ -40,6 +40,7 @@ random.seed(seed_value)
 np.random.seed(seed_value)
 # tf.random.set_seed(seed_value)
 tf.compat.v1.set_random_seed(seed_value)
+# tf.random.set_random_seed(seed_value)
 
 # Configure a new global `tensorflow` session
 session_conf = tf.compat.v1.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=1,
@@ -218,10 +219,10 @@ def data_preprocess(data):
     """
     X = []
     for i in range(len(data['iq_sweep_burst'])):
-        iq = fft(data['iq_sweep_burst'][i])
+        iq = fft(data['iq_sweep_burst'][i])(data['segment_id'] % 6 == 0)
         iq = max_value_on_doppler(iq, data['doppler_burst'][i])
         iq = normalize(iq)
-        iq = np.concatenate((iq[:][10:40],iq[:][80:116]))
+        # iq = np.concatenate((iq[:][10:40],iq[:][80:116]))
         X.append(iq)
 
     data['iq_sweep_burst'] = np.array(X)
@@ -308,19 +309,25 @@ def create_model(input_shape, init):
     CNN model.
 
     Arguments:
-        input_shape -- the shape of our input
-        init -- the weight initialization
+    input_shape -- the shape of our input
+    init -- the weight initialization
 
     Returns:
-        CNN model
+    CNN model
     """
-
     x = inp(shape=input_shape)
     x1 = Conv2D(32, 3, activation="relu", kernel_initializer=init, bias_regularizer='l2', padding='same')(x)
     x1 = BatchNormalization()(x1)
     x2 = Conv2D(32, 1, activation="relu", kernel_initializer=init, bias_regularizer='l2', padding='same')(x1)
     x2 = BatchNormalization()(x2)
     x3 = Concatenate()([x, x2])
+    l = Reshape((-1, 256))(x2)
+    l1 = LSTM(256, return_sequences=True, kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5,
+              recurrent_dropout=0.5)(l)
+    # l1 = Dropout(0.5)(l1)
+    l2 = LSTM(191, return_sequences=False, go_backwards=True,
+              kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(l1)
+    l2 = Dropout(0.5)(l2)
 
     x4 = Conv2D(64, 3, activation="relu", kernel_initializer=init, bias_regularizer='l2', padding='same')(x3)
     x4 = BatchNormalization()(x4)
@@ -343,97 +350,61 @@ def create_model(input_shape, init):
 
     x13 = GlobalAveragePooling2D()(x12)
 
-    x14 = Flatten()(x13)
-    x14 = Reshape((-1, 107))(x14)
+    x14 = Concatenate()([x13, l2])
+
+    x14 = Reshape((-1, 128))(x14)
     x15 = LSTM(1024, return_sequences=True,
                kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(x14)
+    # x15 = Dropout(0.5)(x15)
     x16 = LSTM(1024, go_backwards=True, return_sequences=False,
                kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(x15)
-    # model = Sequential()
-
-    # model.add(Conv2D(32, kernel_size=(5, 5), activation='relu', kernel_initializer = init, bias_regularizer='l2', input_shape=input_shape))
-    # model.add(BatchNormalization())
-    # model.add(MaxPooling2D(pool_size=(2,2)))
-
-    # model.add(Conv2D(64, kernel_size=(3, 3), activation='relu', kernel_initializer = init, bias_regularizer='l2'))
-    # model.add(BatchNormalization())
-    # model.add(Conv2D(64, kernel_size=(1, 1), activation='relu', kernel_initializer = init, bias_regularizer='l2'))
-
-    # model.add(Conv2D(96, kernel_size=(3, 3), activation='relu', kernel_initializer = init, bias_regularizer='l2'))
-    # model.add(BatchNormalization())
-    # model.add(Conv2D(96, kernel_size=(1, 1), activation='relu', kernel_initializer = init, bias_regularizer='l2'))
-
-    # model.add(GlobalAveragePooling2D())
-
-    # model.add(Flatten())
-    # model.add(Reshape((-1,8)))
-
-    # model.add(Dropout(0.3))
-    # model.add(LSTM(512, return_sequences=True,
-    #                 kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5))
-    # model.add(LSTM(512, go_backwards=True, return_sequences=False,
-    #                 kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5))
-
-    # model.add(LSTM(512, return_sequences=False,
-    #                kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5))
-    # model.add(LSTM(512, go_backwards=True, return_sequences=False,
-    #                kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5))
-
-    # model.add(BatchNormalization())
     x17 = Dropout(0.5)(x16)
     x18 = Dense(1, activation='sigmoid', kernel_initializer=init)(x17)
 
     model = Model(inputs=x, outputs=x18)
 
     return model
-    '''
-    x =  inp(shape=input_shape)
 
-    # Initial Layers
-    x1 = Conv2D(128, 5, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x)
-    x2 = MaxPooling2D(pool_size=(2, 2), strides=2)(x1)
-    x3 = BatchNormalization()(x2)
 
-    # Dense Block 1
-    x3_input = x3
-    x4 = Conv2D(256, 1, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x3_input)
-    x5 = BatchNormalization()(x4)
-    x6 = Conv2D(256, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x5)
-    x7 = BatchNormalization()(x6)
-    x8 = Conv2D(256, 1, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x7)
-    x9 = BatchNormalization()(x8)
-    x10 = Conv2D(256, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x9)
-    x11 = BatchNormalization()(x10)
+def binary_focal_loss(gamma=2., alpha=.25):
+    """
+    Binary form of focal loss.
+      FL(p_t) = -alpha * (1 - p_t)**gamma * log(p_t)
+      where p = sigmoid(x), p_t = p or 1 - p depending on if the label is 1 or 0, respectively.
+    References:
+        https://arxiv.org/pdf/1708.02002.pdf
+    Usage:
+     model.compile(loss=[binary_focal_loss(alpha=.25, gamma=2)], metrics=["accuracy"], optimizer=adam)
+    """
 
-    # Transition Layer 1
-    x11_input = Concatenate()([x3,x11])
-    x12 = Conv2D(512,1, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x11_input)
-    x13 = MaxPooling2D(pool_size=(2, 2), strides=2)(x12)
+    def binary_focal_loss_fixed(y_true, y_pred):
+        """
+        :param y_true: A tensor of the same shape as `y_pred`
+        :param y_pred:  A tensor resulting from a sigmoid
+        :return: Output tensor.
+        """
+        y_true = tf.cast(y_true, tf.float32)
+        # Define epsilon so that the back-propagation will not result in NaN for 0 divisor case
+        epsilon = K.epsilon()
+        # Add the epsilon to prediction value
+        # y_pred = y_pred + epsilon
+        # Clip the prediciton value
+        y_pred = K.clip(y_pred, epsilon, 1.0 - epsilon)
+        # Calculate p_t
+        p_t = tf.where(K.equal(y_true, 1), y_pred, 1 - y_pred)
+        # Calculate alpha_t
+        alpha_factor = K.ones_like(y_true) * alpha
+        alpha_t = tf.where(K.equal(y_true, 1), alpha_factor, 1 - alpha_factor)
+        # Calculate cross entropy
+        cross_entropy = -K.log(p_t)
+        weight = alpha_t * K.pow((1 - p_t), gamma)
+        # Calculate focal loss
+        loss = weight * cross_entropy
+        # Sum the losses in mini_batch
+        loss = K.mean(K.sum(loss, axis=1))
+        return loss
 
-    # Dense Block 2
-    x14 = Conv2D(512, 1, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x13)
-    x15 = BatchNormalization()(x14)
-    x16 = Conv2D(512, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x15)
-    x17 = BatchNormalization()(x16)
-    x18 = Conv2D(512, 1, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x17)
-    x19 = BatchNormalization()(x18)
-    x20 = Conv2D(512, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x19)
-    x21 = BatchNormalization()(x20)
-
-    # Transition Layer 2
-    x21_input = Concatenate()([x13,x21])
-    x22 = Conv2D(1024, 1, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x21_input)
-    x23 = BatchNormalization()(x22)
-
-    # Final Layer
-    x24 = GlobalAveragePooling2D()(x23)
-    x25 = Flatten()(x24)
-    x26 = Dense(1, activation='sigmoid', kernel_initializer = init)(x25)
-
-    model = Model(inputs=x, outputs=x26)
-
-    return model
-    '''
+    return binary_focal_loss_fixed
 
 
 # ### **Evaluation and Visualization of Model's results**
@@ -478,6 +449,9 @@ def stats(pred, actual):
 experiment_auxiliary = '/home/Data/MAFAT RADAR Challenge - Auxiliary Experiment Set V2'
 experiment_auxiliary_df = load_data(experiment_auxiliary)
 
+# experiment_auxiliary = '/media/antpc/main_drive/purushottam/mafat/Data/MAFAT RADAR Challenge - Auxiliary Synthetic Set V2'
+# experiment_auxiliary_df = load_data(experiment_auxiliary)
+
 # Taking sample from the Auxiliary Experiment set
 train_aux = aux_split(experiment_auxiliary_df)
 
@@ -497,6 +471,13 @@ training_df = load_data(train_path)
 
 # Adding segments from the experiment auxiliary set to the training set
 train_df = append_dict(training_df, train_aux)
+
+synth_path = '/home/Data/MAFAT RADAR Challenge - Auxiliary Synthetic Set V2'
+synthetic_data = load_data(synth_path)
+
+synthetic_aux = aux_split(synthetic_data)
+
+train_df = append_dict(train_df, synthetic_aux)
 
 # Preprocessing and split the data to training and validation
 train_df = data_preprocess(train_df.copy())
@@ -642,9 +623,9 @@ submission['prediction'] = submission['prediction'].astype('float')
 '''
 
 # Model configuration:
-batch_size = 16
-img_width, img_height = 66, 32
-loss_function = BinaryCrossentropy()
+batch_size = 64
+img_width, img_height = 126, 32
+loss_function = binary_focal_loss()  # BinaryCrossentropy()
 no_epochs = 50
 optimizer = Adam(learning_rate=0.0001)
 input_shape = (img_width, img_height, 1)
@@ -684,6 +665,6 @@ submission['prediction'] = model.predict(test_x)
 submission['prediction'] = submission['prediction'].astype('float')
 
 # Save submission
-submission.to_csv('submission.csv', index=False)
+submission.to_csv('submission_with_synthetic_sample.csv', index=False)
 
 print("Training Done!")
