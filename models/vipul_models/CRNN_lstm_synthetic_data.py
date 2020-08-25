@@ -38,8 +38,8 @@ tf.compat.v1.reset_default_graph()
 random.seed(seed_value)
 np.random.seed(seed_value)
 #tf.random.set_seed(seed_value)
-tf.compat.v1.set_random_seed(seed_value)
-#tf.random.set_random_seed(seed_value)
+#tf.compat.v1.set_random_seed(seed_value)
+tf.random.set_random_seed(seed_value)
 
 # Configure a new global `tensorflow` session
 session_conf = tf.compat.v1.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=1, log_device_placement=True)
@@ -329,8 +329,9 @@ def create_model(input_shape, init):
 	x5 = Conv2D(64, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x4)
 	x5 = BatchNormalization()(x5)
 	x6 = Concatenate()([x3,x5])
-    l3 = Reshape((-1,256))(x6)
-	l4 = LSTM(512, return_sequences=True, kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(l4)
+
+	l3 = Reshape((-1,126))(x6)
+	l4 = LSTM(256, return_sequences=True, kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(l3)
 	#l1 = Dropout(0.5)(l1)
 	l5 = LSTM(191, return_sequences=False, go_backwards=True,
 				kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(l4)
@@ -353,7 +354,7 @@ def create_model(input_shape, init):
 
 	x14 = Concatenate()([x13, l2, l5])
 
-	x14 = Reshape((-1,128))(x14)
+	x14 = Reshape((-1,37))(x14)
 	x15 = LSTM(1024, return_sequences=True,
 				kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(x14)
 	#x15 = Dropout(0.5)(x15)
@@ -404,7 +405,7 @@ def binary_focal_loss(gamma=2., alpha=.25):
         loss = K.mean(K.sum(loss, axis=1))
         return loss
 
-    return binary_focal_loss_fixed
+    return binary_focal_loss_fixed	
 
 # ### **Evaluation and Visualization of Model's results**
 
@@ -445,7 +446,7 @@ def stats(pred, actual):
 # Loading Auxiliary Experiment set - can take a few minutes
 # /home/vaibhawvipul/Documents/vaibhawvipul/datasets/mafat/
 
-experiment_auxiliary = '/home/Data/MAFAT RADAR Challenge - Auxiliary Experiment Set V2'
+experiment_auxiliary = '/home/vaibhawvipul/Documents/vaibhawvipul/datasets/mafat/MAFAT RADAR Challenge - Auxiliary Experiment Set V2'
 experiment_auxiliary_df = load_data(experiment_auxiliary)
 
 # experiment_auxiliary = '/media/antpc/main_drive/purushottam/mafat/Data/MAFAT RADAR Challenge - Auxiliary Synthetic Set V2'
@@ -465,13 +466,13 @@ def append_dict(dict1, dict2):
 
 
 # Training set
-train_path = '/home/Data/MAFAT RADAR Challenge - Training Set V1'
+train_path = '/home/vaibhawvipul/Documents/vaibhawvipul/datasets/mafat/MAFAT RADAR Challenge - Training Set V1'
 training_df = load_data(train_path)
 
 # Adding segments from the experiment auxiliary set to the training set
 train_df = append_dict(training_df, train_aux)
 
-synth_path = '/home/Data/MAFAT RADAR Challenge - Auxiliary Synthetic Set V2'
+synth_path = '/home/vaibhawvipul/Documents/vaibhawvipul/datasets/mafat/MAFAT RADAR Challenge - Auxiliary Synthetic Set V2'
 synthetic_data = load_data(synth_path)
 
 synthetic_aux = aux_split(synthetic_data)
@@ -488,7 +489,7 @@ val_x = val_x.reshape(list(val_x.shape)+[1])
 
 
 # Public test set - loading and preprocessing
-test_path = '/home/Data/MAFAT RADAR Challenge - Public Test Set V1'
+test_path = '/home/vaibhawvipul/Documents/vaibhawvipul/datasets/mafat/MAFAT RADAR Challenge - Public Test Set V1'
 test_df = load_data(test_path)
 test_df = data_preprocess(test_df.copy())
 test_x = test_df['iq_sweep_burst']
@@ -623,7 +624,7 @@ submission['prediction'] = submission['prediction'].astype('float')
 '''
 
 # Model configuration:
-batch_size = 64
+batch_size = 2
 img_width, img_height = 126, 32
 loss_function = binary_focal_loss() #BinaryCrossentropy()
 no_epochs = 50
