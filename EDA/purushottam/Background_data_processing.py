@@ -28,6 +28,7 @@ from tensorflow.keras.metrics import AUC
 from sklearn.metrics import roc_auc_score, roc_curve, auc
 from matplotlib.colors import LinearSegmentedColormap
 from termcolor import colored
+from scipy import signal
 
 # Set seed for reproducibility of results
 seed_value = 0
@@ -219,13 +220,24 @@ def data_preprocess(data):
     """
     X = []
     for i in range(len(data['iq_sweep_burst'])):
-        iq = fft(data['iq_sweep_burst'][i])(data['segment_id'] % 6 == 0)
+        iq = fft(data['iq_sweep_burst'][i])
         iq = max_value_on_doppler(iq, data['doppler_burst'][i])
         iq = normalize(iq)
         # iq = np.concatenate((iq[:][10:40],iq[:][80:116]))
         X.append(iq)
 
-    data['iq_sweep_burst'] = np.array(X)
+    compressed = []
+    for i in range(len(data['iq_sweep_burst'])):
+        temp = []
+        for j in range(0, 32, 2):
+            # plt.plot(signal.savgol_filter(X[i][:, j],11,2))
+            # plt.plot(signal.savgol_filter(X[i][:, j+1],11,2))
+            # plt.plot(abs(signal.savgol_filter(((X[i][:, j+1]) - (X[i][:, j])), 11, 2)))
+            # plt.close()
+            temp.append(((X[i][:, j + 1]) - (X[i][:, j])))
+        compressed.append(np.transpose(temp))
+
+    data['iq_sweep_burst'] = np.array(compressed)
     if 'target_type' in data:
         data['target_type'][data['target_type'] == 'animal'] = 0
         data['target_type'][data['target_type'] == 'human'] = 1
@@ -446,7 +458,8 @@ def stats(pred, actual):
 # Loading Auxiliary Experiment set - can take a few minutes
 # /home/vaibhawvipul/Documents/vaibhawvipul/datasets/mafat/
 
-experiment_auxiliary = '/home/Data/MAFAT RADAR Challenge - Auxiliary Experiment Set V2'
+# experiment_auxiliary = '/media/antpc/main_drive/purushottam/mafat/Data/MAFAT RADAR Challenge - Auxiliary Experiment Set V2'
+experiment_auxiliary = "/home/Data/MAFAT RADAR Challenge - Auxiliary Experiment Set V2"
 experiment_auxiliary_df = load_data(experiment_auxiliary)
 
 # experiment_auxiliary = '/media/antpc/main_drive/purushottam/mafat/Data/MAFAT RADAR Challenge - Auxiliary Synthetic Set V2'
@@ -466,13 +479,28 @@ def append_dict(dict1, dict2):
 
 
 # Training set
-train_path = '/home/Data/MAFAT RADAR Challenge - Training Set V1'
+# train_path = '/media/antpc/main_drive/purushottam/mafat/Data/MAFAT RADAR Challenge - Training Set V1'
+train_path = "/home/Data/MAFAT RADAR Challenge - Training Set V1"
 training_df = load_data(train_path)
 
 # Adding segments from the experiment auxiliary set to the training set
 train_df = append_dict(training_df, train_aux)
 
-synth_path = '/home/Data/MAFAT RADAR Challenge - Auxiliary Synthetic Set V2'
+
+
+# idx = (train_df['snr_type'] == 'HighSNR')
+# for key in train_df:
+#     train_df[key] = train_df[key][np.logical_not(idx)]
+
+
+
+        # train_df[key] = np.delete(train_df[key],(train_df['snr_type'] == 'HighSNR'))
+# train_df['snr_type'] = np.delete(train_df['snr_type'],(train_df['snr_type'] == 'HighSNR'))
+
+
+
+synth_path = "/home/Data/MAFAT RADAR Challenge - Auxiliary Synthetic Set V2"
+# synth_path = '/media/antpc/main_drive/purushottam/mafat/Data/MAFAT RADAR Challenge - Auxiliary Synthetic Set V2'
 synthetic_data = load_data(synth_path)
 
 synthetic_aux = aux_split(synthetic_data)
@@ -624,7 +652,7 @@ submission['prediction'] = submission['prediction'].astype('float')
 
 # Model configuration:
 batch_size = 64
-img_width, img_height = 126, 32
+img_width, img_height = 126, 16
 loss_function = binary_focal_loss()  # BinaryCrossentropy()
 no_epochs = 50
 optimizer = Adam(learning_rate=0.0001)
@@ -665,6 +693,6 @@ submission['prediction'] = model.predict(test_x)
 submission['prediction'] = submission['prediction'].astype('float')
 
 # Save submission
-submission.to_csv('submission_with_synthetic_sample.csv', index=False)
+submission.to_csv('submission_16_withoutfilter_high_lowboth.csv', index=False)
 
 print("Training Done!")
