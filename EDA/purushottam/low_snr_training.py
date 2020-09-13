@@ -226,18 +226,18 @@ def data_preprocess(data):
         # iq = np.concatenate((iq[:][10:40],iq[:][80:116]))
         X.append(iq)
 
-    compressed = []
-    for i in range(len(data['iq_sweep_burst'])):
-        temp = []
-        for j in range(0, 32, 2):
-            # plt.plot(signal.savgol_filter(X[i][:, j],11,2))
-            # plt.plot(signal.savgol_filter(X[i][:, j+1],11,2))
-            # plt.plot(abs(signal.savgol_filter(((X[i][:, j+1]) - (X[i][:, j])), 11, 2)))
-            # plt.close()
-            temp.append(((X[i][:, j + 1]) - (X[i][:, j])))
-        compressed.append(np.transpose(temp))
+    # compressed = []
+    # for i in range(len(data['iq_sweep_burst'])):
+    #     temp = []
+    #     for j in range(0, 32, 2):
+    #         # plt.plot(signal.savgol_filter(X[i][:, j],11,2))
+    #         # plt.plot(signal.savgol_filter(X[i][:, j+1],11,2))
+    #         # plt.plot(abs(signal.savgol_filter(((X[i][:, j+1]) - (X[i][:, j])), 11, 2)))
+    #         # plt.close()
+    #         temp.append(((X[i][:, j + 1]) - (X[i][:, j])))
+    #     compressed.append(np.transpose(temp))
 
-    data['iq_sweep_burst'] = np.array(compressed)
+    data['iq_sweep_burst'] = np.array(X)
     if 'target_type' in data:
         data['target_type'][data['target_type'] == 'animal'] = 0
         data['target_type'][data['target_type'] == 'human'] = 1
@@ -488,9 +488,10 @@ train_df = append_dict(training_df, train_aux)
 
 
 
-# idx = (train_df['snr_type'] == 'HighSNR')
-# for key in train_df:
-#     train_df[key] = train_df[key][np.logical_not(idx)]
+idx = (train_df['snr_type'] == 'HighSNR')
+
+for key in train_df:
+    train_df[key] = train_df[key][np.logical_not(idx)]
 
 
 
