@@ -3,7 +3,7 @@
 
 # #**MAFAT Radar Challenge - Baseline Model**
 
-# AUC - 0.8078
+# AUC - 0.8238
 
 import os
 import random
@@ -16,7 +16,7 @@ import tensorflow as tf
 from tensorflow.keras import backend as K
 from tensorflow.keras.models import Sequential, load_model, Model
 from tensorflow.keras.layers import Dense, Flatten, Conv2D, MaxPooling2D, AveragePooling2D, Dropout, GlobalAveragePooling2D, Concatenate, BatchNormalization
-from tensorflow.keras.layers import LSTM, Reshape, TimeDistributed, Bidirectional
+from tensorflow.keras.layers import LSTM, Reshape, TimeDistributed
 from tensorflow.keras import initializers 
 from tensorflow.keras import Input as inp 
 from tensorflow.keras.applications.vgg16 import VGG16
@@ -27,10 +27,6 @@ from tensorflow.keras.metrics import AUC
 from sklearn.metrics import roc_auc_score, roc_curve, auc
 from matplotlib.colors import LinearSegmentedColormap
 from termcolor import colored
-
-
-
-global bst_val_acc
 
 # Set seed for reproducibility of results
 seed_value = 0
@@ -43,7 +39,6 @@ random.seed(seed_value)
 np.random.seed(seed_value)
 #tf.random.set_seed(seed_value)
 tf.compat.v1.set_random_seed(seed_value)
-#tf.random.set_random_seed(seed_value)
 
 # Configure a new global `tensorflow` session
 session_conf = tf.compat.v1.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=1, log_device_placement=True)
@@ -189,10 +184,11 @@ def max_value_on_doppler(iq, doppler_burst):
 	"""
 	iq_max_value = np.max(iq)
 	for i in range(iq.shape[1]):
-		if doppler_burst[i] >= len(iq):
-			continue
+		if doppler_burst[i]>=len(iq):
+			 continue
 		iq[doppler_burst[i], i] = iq_max_value
 	return iq
+
 
 def normalize(iq):
 	"""
@@ -222,7 +218,6 @@ def data_preprocess(data):
 		iq = fft(data['iq_sweep_burst'][i])
 		iq = max_value_on_doppler(iq,data['doppler_burst'][i])
 		iq = normalize(iq)
-		# iq = np.concatenate((iq[:][10:40],iq[:][80:116]))
 		X.append(iq)
 
 	data['iq_sweep_burst'] = np.array(X)
@@ -266,8 +261,7 @@ def split_train_val(data):
 		target_type vector 
 		for training and validation sets
 	"""
-	# idx = ((data['geolocation_id'] == 4) | (data['geolocation_id'] == 1))  & (data['segment_id'] % 6 == 0)
-	idx = (data['segment_id'] % 6 == 0)
+	idx = ((data['geolocation_id'] == 4) | (data['geolocation_id'] == 1) | (data['geolocation_id'] == 5) | (data['geolocation_id'] == 6)) & (data['segment_id'] % 6 == 0)
 	training_x = data['iq_sweep_burst'][np.logical_not(idx)]
 	training_y = data['target_type'][np.logical_not(idx)]
 	validation_x = data['iq_sweep_burst'][idx]
@@ -285,11 +279,6 @@ def aux_split(data):
 	Returns:
 		The auxilary data for the training
 	"""
-	# idx = np.bool_(np.zeros(len(data['track_id'])))
-	# for track in np.unique(data['track_id']):
-	# 	idx |= data['segment_id']==(data['segment_id'][data['track_id'] == track][:3])
-
-
 	idx = np.bool_(np.zeros(len(data['track_id'])))
 	for track in np.unique(data['track_id']):
 		seg_lst = (data['segment_id'][data['track_id'] == track][:3])
@@ -302,6 +291,7 @@ def aux_split(data):
 	for key in data:
 		data[key] = data[key][idx]
 	return data
+
 
 
 # ## **Model**
@@ -319,100 +309,132 @@ def create_model(input_shape, init):
 	CNN model.
 
 	Arguments:
-	input_shape -- the shape of our input
-	init -- the weight initialization
+		input_shape -- the shape of our input
+		init -- the weight initialization
 
 	Returns:
-	CNN model    
+		CNN model    
 	"""
+
 	x =  inp(shape=input_shape)
 	x1 = Conv2D(32, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x)
 	x1 = BatchNormalization()(x1)
 	x2 = Conv2D(32, 1, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x1)
 	x2 = BatchNormalization()(x2)
 	x3 = Concatenate()([x,x2])
-	l = Reshape((-1,256))(x2)
-	l1 = LSTM(256, return_sequences=True, kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(l)
-	#l1 = Dropout(0.5)(l1)
-	l2 = LSTM(191, return_sequences=False, go_backwards=True,
-				kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(l1)
-	l2 = Dropout(0.5)(l2)
-
+	
 	x4 = Conv2D(64, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x3)
 	x4 = BatchNormalization()(x4)
 	x5 = Conv2D(64, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x4)
 	x5 = BatchNormalization()(x5)
 	x6 = Concatenate()([x3,x5])
-
+	
 	x7 = Conv2D(96, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x6)
 	x7 = BatchNormalization()(x7)
 	x8 = Conv2D(96, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x7)
 	x8 = BatchNormalization()(x8)
 	x9 = Concatenate()([x6,x8])
-
+	
 	x10 = Conv2D(128, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x9)
 	x10 = BatchNormalization()(x10)
 	x11 = Conv2D(128, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x10)
 	#x8 = Concatenate()([x4,x6])
 	x11 = BatchNormalization()(x11)
 	x12 = Concatenate()([x9,x11])
-
+	
 	x13 = GlobalAveragePooling2D()(x12)
-
-	x14 = Concatenate()([x13, l2])
-
-	x14 = Reshape((-1,128))(x14)
+	
+	x14 = Flatten()(x13)
+	x14 = Reshape((-1,107))(x14)
 	x15 = LSTM(1024, return_sequences=True,
-				kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(x14)
-	#x15 = Dropout(0.5)(x15)
+                kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(x14)
 	x16 = LSTM(1024, go_backwards=True, return_sequences=False,
-				kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(x15)
+            	kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(x15) 
+	# model = Sequential()
+	
+	# model.add(Conv2D(32, kernel_size=(5, 5), activation='relu', kernel_initializer = init, bias_regularizer='l2', input_shape=input_shape))
+	# model.add(BatchNormalization())
+	# model.add(MaxPooling2D(pool_size=(2,2)))
+	
+	# model.add(Conv2D(64, kernel_size=(3, 3), activation='relu', kernel_initializer = init, bias_regularizer='l2'))
+	# model.add(BatchNormalization())
+	# model.add(Conv2D(64, kernel_size=(1, 1), activation='relu', kernel_initializer = init, bias_regularizer='l2'))
+	
+	# model.add(Conv2D(96, kernel_size=(3, 3), activation='relu', kernel_initializer = init, bias_regularizer='l2'))
+	# model.add(BatchNormalization())
+	# model.add(Conv2D(96, kernel_size=(1, 1), activation='relu', kernel_initializer = init, bias_regularizer='l2'))
+	
+	# model.add(GlobalAveragePooling2D())
+
+	# model.add(Flatten())
+	# model.add(Reshape((-1,8)))
+	
+	# model.add(Dropout(0.3))
+	# model.add(LSTM(512, return_sequences=True,
+    #                 kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5))
+	# model.add(LSTM(512, go_backwards=True, return_sequences=False,
+    #                 kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5))
+	
+	#model.add(LSTM(512, return_sequences=False,
+    #                kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5))
+	#model.add(LSTM(512, go_backwards=True, return_sequences=False,
+    #                kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5))
+	
+	#model.add(BatchNormalization())
 	x17 = Dropout(0.5)(x16)
 	x18 = Dense(1, activation='sigmoid', kernel_initializer = init)(x17)
 
 	model = Model(inputs=x, outputs=x18)
-
+	
 	return model
+	'''
+	x =  inp(shape=input_shape)
+	
+	# Initial Layers
+	x1 = Conv2D(128, 5, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x)
+	x2 = MaxPooling2D(pool_size=(2, 2), strides=2)(x1)
+	x3 = BatchNormalization()(x2)
+	
+	# Dense Block 1
+	x3_input = x3
+	x4 = Conv2D(256, 1, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x3_input)
+	x5 = BatchNormalization()(x4)
+	x6 = Conv2D(256, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x5)
+	x7 = BatchNormalization()(x6)
+	x8 = Conv2D(256, 1, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x7)
+	x9 = BatchNormalization()(x8)
+	x10 = Conv2D(256, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x9)
+	x11 = BatchNormalization()(x10)
+	
+	# Transition Layer 1
+	x11_input = Concatenate()([x3,x11])
+	x12 = Conv2D(512,1, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x11_input)
+	x13 = MaxPooling2D(pool_size=(2, 2), strides=2)(x12)
 
-def binary_focal_loss(gamma=2., alpha=.25):
-    """
-    Binary form of focal loss.
-      FL(p_t) = -alpha * (1 - p_t)**gamma * log(p_t)
-      where p = sigmoid(x), p_t = p or 1 - p depending on if the label is 1 or 0, respectively.
-    References:
-        https://arxiv.org/pdf/1708.02002.pdf
-    Usage:
-     model.compile(loss=[binary_focal_loss(alpha=.25, gamma=2)], metrics=["accuracy"], optimizer=adam)
-    """
+	# Dense Block 2
+	x14 = Conv2D(512, 1, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x13)
+	x15 = BatchNormalization()(x14)
+	x16 = Conv2D(512, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x15)
+	x17 = BatchNormalization()(x16)
+	x18 = Conv2D(512, 1, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x17)
+	x19 = BatchNormalization()(x18)
+	x20 = Conv2D(512, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x19)
+	x21 = BatchNormalization()(x20)
+	
+	# Transition Layer 2
+	x21_input = Concatenate()([x13,x21])
+	x22 = Conv2D(1024, 1, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x21_input)
+	x23 = BatchNormalization()(x22)
 
-    def binary_focal_loss_fixed(y_true, y_pred):
-        """
-        :param y_true: A tensor of the same shape as `y_pred`
-        :param y_pred:  A tensor resulting from a sigmoid
-        :return: Output tensor.
-        """
-        y_true = tf.cast(y_true, tf.float32)
-        # Define epsilon so that the back-propagation will not result in NaN for 0 divisor case
-        epsilon = K.epsilon()
-        # Add the epsilon to prediction value
-        # y_pred = y_pred + epsilon
-        # Clip the prediciton value
-        y_pred = K.clip(y_pred, epsilon, 1.0 - epsilon)
-        # Calculate p_t
-        p_t = tf.where(K.equal(y_true, 1), y_pred, 1 - y_pred)
-        # Calculate alpha_t
-        alpha_factor = K.ones_like(y_true) * alpha
-        alpha_t = tf.where(K.equal(y_true, 1), alpha_factor, 1 - alpha_factor)
-        # Calculate cross entropy
-        cross_entropy = -K.log(p_t)
-        weight = alpha_t * K.pow((1 - p_t), gamma)
-        # Calculate focal loss
-        loss = weight * cross_entropy
-        # Sum the losses in mini_batch
-        loss = K.mean(K.sum(loss, axis=1))
-        return loss
+	# Final Layer
+	x24 = GlobalAveragePooling2D()(x23)
+	x25 = Flatten()(x24)
+	x26 = Dense(1, activation='sigmoid', kernel_initializer = init)(x25)
 
-    return binary_focal_loss_fixed
+	model = Model(inputs=x, outputs=x26)
+	
+	return model
+	'''
 
 # ### **Evaluation and Visualization of Model's results**
 
@@ -452,9 +474,8 @@ def stats(pred, actual):
 
 # Loading Auxiliary Experiment set - can take a few minutes
 # /home/vaibhawvipul/Documents/vaibhawvipul/datasets/mafat/
-
-data_path = '/media/antpc/main_drive/purushottam/mafat/Data'
-# data_path = '/home/Data/'    # for docker
+# data_path = '/media/antpc/main_drive/purushottam/mafat/Data'
+data_path = '/home/Data/'    # for docker
 
 experiment_auxiliary = os.path.join(data_path,'Aux_exp')
 experiment_auxiliary_df = load_data(experiment_auxiliary)
@@ -466,7 +487,7 @@ experiment_auxiliary_df = load_data(experiment_auxiliary)
 train_aux = aux_split(experiment_auxiliary_df)
 
 
-# The function append_dict is for concatenating the training set 
+# The function append_dict is for concatenating the training set
 # with the Auxiliary data set segments
 
 def append_dict(dict1, dict2):
@@ -493,6 +514,7 @@ synthetic_data = load_data(synth_path)
 synthetic_aux = aux_split(synthetic_data)
 
 train_df = append_dict(train_df, synthetic_aux)
+
 
 # Preprocessing and split the data to training and validation
 train_df = data_preprocess(train_df.copy())
@@ -639,11 +661,11 @@ submission['prediction'] = submission['prediction'].astype('float')
 '''
 
 # Model configuration:
-batch_size = 90
+batch_size = 4
 img_width, img_height = 126, 32
-loss_function = binary_focal_loss() #BinaryCrossentropy()
-no_epochs = 40
-optimizer = Adam(learning_rate = 0.0001)
+loss_function = BinaryCrossentropy()
+no_epochs = 50
+optimizer = Adam(learning_rate = 0.001)
 input_shape = (img_width, img_height, 1)
 
 init = tf.keras.initializers.glorot_normal(seed = 0)
@@ -652,11 +674,11 @@ init = tf.keras.initializers.glorot_normal(seed = 0)
 model = create_model(input_shape, init)  
 model.compile(loss=loss_function, optimizer=optimizer, metrics=[AUC(), 'accuracy'])
 
+
 global best_model
 best_model = model
 bst_val_acc = 0.0
 
-################ Cehckpoint
 
 class LossAndErrorPrintingCallback(tf.keras.callbacks.Callback):
 	def on_epoch_end(self, epoch, logs=None):
@@ -666,17 +688,9 @@ class LossAndErrorPrintingCallback(tf.keras.callbacks.Callback):
 			bst_val_acc = logs['val_accuracy']
 			best_model = self.model
 		print("bst_val_acc     ", bst_val_acc)
-		# print( "The average loss for epoch {} is {:7.2f} " , "and mean absolute error is {:7.2f}.".format(epoch, logs["loss"], logs["accuracy"]))
-	# def on_train_batch_end(self, batch, logs=None):
-    # 	print("For batch {}, loss is {:7.2f}.".format(batch, logs["loss"]))
-	# def on_test_batch_end(self, batch, logs=None):
-    # 	print("For batch {}, loss is {:7.2f}.".format(batch, logs["loss"]))
 
 
-
-############################################33
-
-# **Model Architecture**
+# **Model Architecture**   
 #    
 # ![](https://drive.google.com/uc?export=view&id=1wsJBHbghEPGT0s1QQG6BHl7MS3Yo0o4i)
 
@@ -692,8 +706,10 @@ history = model.fit(train_x, train_y, batch_size = batch_size, epochs = no_epoch
 # #### **Results**
 # Submissions are evaluated on the area under the Receiver Operating Characteristic Curve ([ROC AUC](https://en.wikipedia.org/wiki/Receiver_operating_characteristic))   
 # on the predicted probabilities, as calculated by [roc_auc_score in scikit-learn (v 0.23.1)](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_auc_score.html).
-# 
+#
+
 model = best_model
+
 # Plot ROC curve and show ROC-AUC results of the training and validation sets. 
 pred = [model.predict(train_x), model.predict(val_x)]
 actual = [train_y, val_y]
@@ -707,6 +723,6 @@ submission['prediction'] = model.predict(test_x)
 submission['prediction'] = submission['prediction'].astype('float')
 
 # Save submission
-submission.to_csv('submission_mod_aux_bst_mod.csv', index=False)
+submission.to_csv('submission_Resnet_with.csv', index=False)
 
 print("Training Done!")
