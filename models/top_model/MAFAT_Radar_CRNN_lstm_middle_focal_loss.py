@@ -262,7 +262,7 @@ def split_train_val(data):
 		target_type vector 
 		for training and validation sets
 	"""
-	idx = ((data['geolocation_id'] == 4) | (data['geolocation_id'] == 1))   & (data['segment_id'] % 6 == 0)
+	idx = ((data['geolocation_id'] == 4) | (data['geolocation_id'] == 1))  & (data['segment_id'] % 6 == 0)
 	training_x = data['iq_sweep_burst'][np.logical_not(idx)]
 	training_y = data['target_type'][np.logical_not(idx)]
 	validation_x = data['iq_sweep_burst'][idx]

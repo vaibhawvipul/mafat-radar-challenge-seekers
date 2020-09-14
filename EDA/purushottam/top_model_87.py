@@ -13,8 +13,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 
-import cv2
-
 from tensorflow.keras import backend as K
 from tensorflow.keras.models import Sequential, load_model, Model
 from tensorflow.keras.layers import Dense, Flatten, Conv2D, MaxPooling2D, AveragePooling2D, Dropout, \
@@ -23,6 +21,7 @@ from tensorflow.keras.layers import LSTM, Reshape, TimeDistributed, Bidirectiona
 from tensorflow.keras import initializers
 from tensorflow.keras import Input as inp
 from tensorflow.keras.applications.vgg16 import VGG16
+from tensorflow.keras.callbacks import ModelCheckpoint
 
 from tensorflow.keras.losses import BinaryCrossentropy
 from tensorflow.keras.optimizers import Adam
@@ -53,7 +52,6 @@ tf.compat.v1.keras.backend.set_session(sess)
 
 print(tf.__version__)
 
-cv2.namedWindow('frame',cv2.WINDOW_NORMAL)
 
 # Functions for loading the data
 def load_data(file_path):
@@ -225,23 +223,9 @@ def data_preprocess(data):
         iq = fft(data['iq_sweep_burst'][i])
         iq = max_value_on_doppler(iq, data['doppler_burst'][i])
         iq = normalize(iq)
-        # iq = np.concatenate((iq[:][10:40],iq[:][80:116]))
         X.append(iq)
 
     data['iq_sweep_burst'] = np.array(X)
-
-    ###### test Code   #####################
-    for i,sm_data in enumerate(data['iq_sweep_burst']):
-        mn = min(data['doppler_burst'][i])
-        mx = max(data['doppler_burst'][i])
-        img = sm_data[mn:mx]
-        if sm_data != []:
-            cv2.normalize(img, img, 0, 255, cv2.NORM_MINMAX)
-            img = np.asarray(img,dtype=np.uint8)
-            cv2.applyColorMap(img,cv2.COLORMAP_JET,img)
-            cv2.imshow('frame',img)
-            cv2.waitKey(150)
-    ########################################
     if 'target_type' in data:
         data['target_type'][data['target_type'] == 'animal'] = 0
         data['target_type'][data['target_type'] == 'human'] = 1
@@ -282,7 +266,7 @@ def split_train_val(data):
         target_type vector
         for training and validation sets
     """
-    idx = ((data['geolocation_id'] == 4) | (data['geolocation_id'] == 1)) & (data['segment_id'] % 6 == 0)
+    idx = ((data['geolocation_id'] == 4) | (data['geolocation_id'] == 6) | (data['geolocation_id'] == 1) | (data['geolocation_id'] == 5)) & (data['segment_id'] % 6 == 0)
     training_x = data['iq_sweep_burst'][np.logical_not(idx)]
     training_y = data['target_type'][np.logical_not(idx)]
     validation_x = data['iq_sweep_burst'][idx]
@@ -303,7 +287,7 @@ def aux_split(data):
     """
     idx = np.bool_(np.zeros(len(data['track_id'])))
     for track in np.unique(data['track_id']):
-        idx |= data['segment_id'] == (data['segment_id'][data['track_id'] == track][:4])
+        idx |= data['segment_id'] == (data['segment_id'][data['track_id'] == track][:3])
 
     for key in data:
         data[key] = data[key][idx]
@@ -454,16 +438,12 @@ def stats(pred, actual):
     plt.legend(loc="lower right", prop={'size': 20})
     plt.show()
 
-data_path = '/media/antpc/main_drive/purushottam/mafat/Data'
-# data_path = '/home/Data/'    # for docker
+# data_path = '/media/antpc/main_drive/purushottam/mafat/Data'
+data_path = '/home/Data/'    # for docker
 
 experiment_auxiliary = os.path.join(data_path,'Aux_exp')
 experiment_auxiliary_df = load_data(experiment_auxiliary)
 train_aux = aux_split(experiment_auxiliary_df)
-
-
-# The function append_dict is for concatenating the training set
-# with the Auxiliary data set segments
 
 def append_dict(dict1, dict2):
     for key in dict1:
@@ -471,20 +451,15 @@ def append_dict(dict1, dict2):
     return dict1
 
 
+# Training set
 train_path = os.path.join(data_path,'Train')
 training_df = load_data(train_path)
 train_df = append_dict(training_df, train_aux)
 
-################# for removing highSNR values ############
-# idx = (train_df['snr_type'] == 'HighSNR')
-#
-# for key in train_df:
-#     train_df[key] = train_df[key][np.logical_not(idx)]
+idx = (train_df['snr_type'] == 'HighSNR')
+for key in train_df:
+    train_df[key] = train_df[key][np.logical_not(idx)]
 
-##########################################################
-
-# train_df[key] = np.delete(train_df[key],(train_df['snr_type'] == 'HighSNR'))
-# train_df['snr_type'] = np.delete(train_df['snr_type'],(train_df['snr_type'] == 'HighSNR'))
 
 synth_path = os.path.join(data_path,'Aux_synth')
 synthetic_data = load_data(synth_path)
@@ -492,7 +467,6 @@ synthetic_data = load_data(synth_path)
 synthetic_aux = aux_split(synthetic_data)
 
 train_df = append_dict(train_df, synthetic_aux)
-
 
 # Preprocessing and split the data to training and validation
 train_df = data_preprocess(train_df.copy())
@@ -639,10 +613,10 @@ submission['prediction'] = submission['prediction'].astype('float')
 '''
 
 # Model configuration:
-batch_size = 128
+batch_size = 32
 img_width, img_height = 126, 32
 loss_function = binary_focal_loss()  # BinaryCrossentropy()
-no_epochs = 20
+no_epochs = 50
 optimizer = Adam(learning_rate=0.0001)
 input_shape = (img_width, img_height, 1)
 
@@ -655,6 +629,10 @@ model.compile(loss=loss_function, optimizer=optimizer, metrics=[AUC(), 'accuracy
 # **Model Architecture**
 #
 # ![](https://drive.google.com/uc?export=view&id=1wsJBHbghEPGT0s1QQG6BHl7MS3Yo0o4i)
+filepath="weights_best56.hdf5"
+checkpoint = ModelCheckpoint(filepath, monitor='val_auc', verbose=1, save_best_only=True, mode='max')
+callbacks_list = [checkpoint]
+
 
 
 # model.summary()
@@ -662,7 +640,12 @@ model.compile(loss=loss_function, optimizer=optimizer, metrics=[AUC(), 'accuracy
 
 # Model fit
 history = model.fit(train_x, train_y, batch_size=batch_size, epochs=no_epochs,
-                    validation_data=(val_x, val_y))
+                    validation_data=(val_x, val_y),callbacks=callbacks_list)
+
+
+model.load_weights("weights_best56.hdf5")
+model.compile(loss=loss_function, optimizer=optimizer, metrics=[AUC(), 'accuracy'])
+
 
 # #### **Results**
 # Submissions are evaluated on the area under the Receiver Operating Characteristic Curve ([ROC AUC](https://en.wikipedia.org/wiki/Receiver_operating_characteristic))
@@ -681,6 +664,6 @@ submission['prediction'] = model.predict(test_x)
 submission['prediction'] = submission['prediction'].astype('float')
 
 # Save submission
-submission.to_csv('submission_lowsnr_auxsplit4.csv', index=False)
+submission.to_csv('submission_5_6_87.csv', index=False)
 
 print("Training Done!")

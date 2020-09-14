@@ -12,6 +12,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
+import cv2
 
 from tensorflow.keras import backend as K
 from tensorflow.keras.models import Sequential, load_model, Model
@@ -263,7 +264,7 @@ def split_train_val(data):
         target_type vector
         for training and validation sets
     """
-    idx = ((data['geolocation_id'] == 4) | (data['geolocation_id'] == 1)) & (data['segment_id'] % 6 == 0)
+    idx = ((data['geolocation_id'] == 4) | (data['geolocation_id'] == 1) | (data['geolocation_id'] == 5)) & (data['segment_id'] % 6 == 0)
     training_x = data['iq_sweep_burst'][np.logical_not(idx)]
     training_y = data['target_type'][np.logical_not(idx)]
     validation_x = data['iq_sweep_burst'][idx]
@@ -437,14 +438,11 @@ def stats(pred, actual):
 # Loading Auxiliary Experiment set - can take a few minutes
 # /home/vaibhawvipul/Documents/vaibhawvipul/datasets/mafat/
 
-# experiment_auxiliary = '/media/antpc/main_drive/purushottam/mafat/Data/MAFAT RADAR Challenge - Auxiliary Experiment Set V2'
-experiment_auxiliary = "/tmp/MAFAT RADAR Challenge - Auxiliary Experiment Set V2"
+data_path = '/media/antpc/main_drive/purushottam/mafat/Data'
+# data_path = '/home/Data/'    # for docker
+
+experiment_auxiliary = os.path.join(data_path,'Aux_exp')
 experiment_auxiliary_df = load_data(experiment_auxiliary)
-
-# experiment_auxiliary = '/media/antpc/main_drive/purushottam/mafat/Data/MAFAT RADAR Challenge - Auxiliary Synthetic Set V2'
-# experiment_auxiliary_df = load_data(experiment_auxiliary)
-
-# Taking sample from the Auxiliary Experiment set
 train_aux = aux_split(experiment_auxiliary_df)
 
 
@@ -457,30 +455,24 @@ def append_dict(dict1, dict2):
     return dict1
 
 
-# Training set
-# train_path = '/media/antpc/main_drive/purushottam/mafat/Data/MAFAT RADAR Challenge - Training Set V1'
-train_path = "/tmp/MAFAT RADAR Challenge - Training Set V1"
-training_df = load_data(train_path)
 
-# Adding segments from the experiment auxiliary set to the training set
+train_path = os.path.join(data_path,'Train')
+training_df = load_data(train_path)
 train_df = append_dict(training_df, train_aux)
 
+################# for removing highSNR values ############
+# idx = (train_df['snr_type'] == 'HighSNR')
+#
+# for key in train_df:
+#     train_df[key] = train_df[key][np.logical_not(idx)]
+
+##########################################################
 
 
-idx = (train_df['snr_type'] == 'HighSNR')
-
-for key in train_df:
-    train_df[key] = train_df[key][np.logical_not(idx)]
-
-
-
-        # train_df[key] = np.delete(train_df[key],(train_df['snr_type'] == 'HighSNR'))
+# train_df[key] = np.delete(train_df[key],(train_df['snr_type'] == 'HighSNR'))
 # train_df['snr_type'] = np.delete(train_df['snr_type'],(train_df['snr_type'] == 'HighSNR'))
 
-
-
-synth_path = "/tmp/MAFAT RADAR Challenge - Auxiliary Synthetic Set V2"
-# synth_path = '/media/antpc/main_drive/purushottam/mafat/Data/MAFAT RADAR Challenge - Auxiliary Synthetic Set V2'
+synth_path = os.path.join(data_path,'Aux_synth')
 synthetic_data = load_data(synth_path)
 
 synthetic_aux = aux_split(synthetic_data)
@@ -495,8 +487,10 @@ train_y = train_y.astype(int)
 train_x = train_x.reshape(list(train_x.shape) + [1])
 val_x = val_x.reshape(list(val_x.shape) + [1])
 
+
+
 # Public test set - loading and preprocessing
-test_path = '/tmp/MAFAT RADAR Challenge - Public Test Set V1'
+test_path = os.path.join(data_path,'Public_test')
 test_df = load_data(test_path)
 test_df = data_preprocess(test_df.copy())
 test_x = test_df['iq_sweep_burst']
@@ -595,9 +589,9 @@ submission['prediction'] = submission['prediction'].astype('float')
 
 # Model configuration:
 batch_size = 64
-img_width, img_height = 126, 16
+img_width, img_height = 126, 32
 loss_function = binary_focal_loss()  # BinaryCrossentropy()
-no_epochs = 30
+no_epochs = 50
 optimizer = Adam(learning_rate=0.0001)
 input_shape = (img_width, img_height, 1)
 
