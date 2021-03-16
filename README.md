@@ -26,58 +26,12 @@ There are only ~500 odd datapoints of humans. Rest ~5500 data points are of anim
 
 We also figured out that we would need to reason about the data temporally as well. This is because the datapoints capture the movement of animal/ human across time. Our model needs to do spatial as well as temporal pattern reccognition.
 
-### Model Architecture - 
+### Model Architecture
 
-The best performing model had the following architecture - 
+The best performing model had the following architecture
 
-```
-  x =  inp(shape=input_shape)
-	x1 = Conv2D(32, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x)
-	x1 = BatchNormalization()(x1)
-	x2 = Conv2D(32, 1, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x1)
-	x2 = BatchNormalization()(x2)
-	x3 = Concatenate()([x,x2])
-	l = Reshape((-1,256))(x2)
-	l1 = LSTM(256, return_sequences=True, kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(l)
-	#l1 = Dropout(0.5)(l1)
-	l2 = LSTM(191, return_sequences=False, go_backwards=True,
-				kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(l1)
-	l2 = Dropout(0.5)(l2)
+![Architecture](./model.png)
 
-	x4 = Conv2D(64, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x3)
-	x4 = BatchNormalization()(x4)
-	x5 = Conv2D(64, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x4)
-	x5 = BatchNormalization()(x5)
-	x6 = Concatenate()([x3,x5])
-
-	x7 = Conv2D(96, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x6)
-	x7 = BatchNormalization()(x7)
-	x8 = Conv2D(96, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x7)
-	x8 = BatchNormalization()(x8)
-	x9 = Concatenate()([x6,x8])
-
-	x10 = Conv2D(128, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x9)
-	x10 = BatchNormalization()(x10)
-	x11 = Conv2D(128, 3, activation="relu", kernel_initializer = init, bias_regularizer='l2', padding='same')(x10)
-	#x8 = Concatenate()([x4,x6])
-	x11 = BatchNormalization()(x11)
-	x12 = Concatenate()([x9,x11])
-
-	x13 = GlobalAveragePooling2D()(x12)
-
-	x14 = Concatenate()([x13, l2])
-
-	x14 = Reshape((-1,128))(x14)
-	x15 = LSTM(1024, return_sequences=True,
-				kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(x14)
-	#x15 = Dropout(0.5)(x15)
-	x16 = LSTM(1024, go_backwards=True, return_sequences=False,
-				kernel_initializer=initializers.RandomNormal(stddev=0.001), dropout=0.5, recurrent_dropout=0.5)(x15)
-	x17 = Dropout(0.5)(x16)
-	x18 = Dense(1, activation='sigmoid', kernel_initializer = init)(x17)
-
-	model = Model(inputs=x, outputs=x18)
- ```
 To handle data imbalance, we trained the model with Binary Focal Loss.
 
 ### Execute the repo - 
